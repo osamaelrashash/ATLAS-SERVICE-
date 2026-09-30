@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ATLAS - منصة خدمات المركز والمتاجر المحلية</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 50: '#f0fdf4', 500: '#22c55e', 600: '#16a34a', 700: '#15803d' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <!-- Google Maps API (استبدل YOUR_API_KEY بمفتاحك الحقيقي لاحقاً) -->
+    <script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=places" async defer></script>
+    <style>
+        body { font-family: 'Cairo', sans-serif; }
+        #map { height: 320px; width: 100%; border-radius: 1rem; }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 antialiased min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="bg-white shadow-sm sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center gap-2 cursor-pointer" onclick="router('home')">
+                <span class="text-2xl font-black tracking-wider text-brand-600">ATLAS</span>
+                <span class="text-xs bg-brand-50 text-brand-700 px-2 py-0.5 rounded-full font-semibold">منصة المركز</span>
+            </div>
+            <div id="userHeaderInfo" class="flex items-center gap-2"></div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main id="app" class="max-w-4xl mx-auto px-4 py-6 flex-grow w-full">
+        <!-- المحتوى يتغير ديناميكياً -->
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-gray-100 py-4 mt-10">
+        <div class="max-w-4xl mx-auto px-4 text-center text-xs text-gray-500">
+            منصة ATLAS المحلية &copy; 2026<br>
+            <span class="text-brand-600 font-semibold">Designed & Developed by اسامه إسماعيل علي</span>
+        </div>
+    </footer>
+
+    <!-- App Logic -->
+    <script>
+        // إعداد قاعدة البيانات المحلية الأولية (لتشغيل سريع تحت ضعف النت)
+        if (!localStorage.getItem('atlas_db_techs')) {
+            localStorage.setItem('atlas_db_techs', JSON.stringify([
+                { id: 1, name: 'أحمد السقا', service: 'plumbing', specialty: 'تسربات المياه وتصليح الحنفيات والصحي', phone: '01012345678', lat: 30.0444, lng: 31.2357, rating: 4.9, verified: true },
+                { id: 2, name: 'محمد الكهربائي', service: 'electricity', specialty: 'تركيب لوحات وإصلاح أعطال الإضاءة', phone: '01198765432', lat: 30.0500, lng: 31.2400, rating: 4.8, verified: true }
+            ]));
+        }
+
+        if (!localStorage.getItem('atlas_db_shops')) {
+            localStorage.setItem('atlas_db_shops', JSON.stringify([
+                { id: 101, name: 'محل الباشا لأدوات السباكة', category: 'plumbing', phone: '01099887766', address: 'شارع المركز الرئيسي', offers: 'خصم 10% على أطقم الخلاطات اليوم', items: [{name: 'أنبوبة سيليكون', price: '45 ج.م'}, {name: 'حنفية خلاط', price: '350 ج.م'}] },
+                { id: 102, name: 'الفرات لمستلزمات الكهرباء', category: 'electricity', phone: '01122334455', address: 'بجوار المحطة', offers: 'عروض خاصة على لفات السلك الأصلي', items: [{name: 'لفة سلك 3 مم', price: '420 ج.م'}, {name: 'مفتاح إضاءة', price: '30 ج.م'}] }
+            ]));
+        }
+
+        const servicesList = [
+            { id: 'plumbing', name: 'سباكة', icon: '🔧' },
+            { id: 'electricity', name: 'كهرباء', icon: '⚡' },
+            { id: 'ac', name: 'تكييف', icon: '❄️' },
+            { id: 'carpentry', name: 'نجارة', icon: '🪚' },
+            { id: 'painting', name: 'نقاشة', icon: '🎨' },
+            { id: 'cleaning', name: 'تنظيف', icon: '🧹' },
+            { id: 'appliances', name: 'صيانة أجهزة', icon: '📺' },
+            { id: 'mobiles', name: 'صيانة موبايلات', icon: '📱' },
+            { id: 'mechanics', name: 'ميكانيكا', icon: '🚗' }
+        ];
+
+        function checkAuthAndInit() {
+            const currentUser = localStorage.getItem('atlas_logged_user');
+            updateHeaderUser();
+            if (!currentUser) {
+                router('auth');
+            } else {
+                router('home');
+            }
+        }
+
+        function updateHeaderUser() {
+            const userHeader = document.getElementById('userHeaderInfo');
+            const currentUser = JSON.parse(localStorage.getItem('atlas_logged_user'));
+            if (currentUser) {
+                userHeader.innerHTML = `
+                    <span class="text-xs font-bold text-gray-700">مرحباً، ${currentUser.name}</span>
+                    <button onclick="logout()" class="text-xs bg-gray-100 hover:bg-gray-200 text-red-600 px-2.5 py-1.5 rounded-lg font-semibold transition">خروج</button>
+                `;
+            } else {
+                userHeader.innerHTML = `<button onclick="router('auth')" class="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg font-semibold">تسجيل الدخول</button>`;
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('atlas_logged_user');
+            checkAuthAndInit();
+        }
+
+        function router(view, param = null) {
+            const app = document.getElementById('app');
+            window.scrollTo(0, 0);
+
+            if (view === 'auth') {
+                renderAuth(app);
+            } else if (view === 'home') {
+                renderHome(app);
+            } else if (view === 'shops') {
+                renderShops(app);
+            } else if (view === 'techRegister') {
+                renderTechRegister(app);
+            }
+        }
+
+        // 1. تسجيل الدخول الدائم (Gmail أو الهاتف)
+        function renderAuth(container) {
+            container.innerHTML = `
+                <div class="max-w-md mx-auto bg-white p-8 rounded-2xl shadow-sm border border-gray-100 text-center my-10">
+                    <h1 class="text-3xl font-black text-brand-600 mb-2">ATLAS</h1>
+                    <p class="text-xs text-gray-500 mb-6">سجل دخولك مرة واحدة باستخدام بريدك أو رقم هاتفك ليبقى حسابك محفوظاً.</p>
+                    
+                    <div class="space-y-4 text-right">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">اسمك الكريم</label>
+                            <input type="text" id="authName" placeholder="أدخل اسمك" class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">Gmail أو رقم الهاتف</label>
+                            <input type="text" id="authContact" placeholder="example@gmail.com أو 010xxxxxxxx" class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        </div>
+                        <button onclick="handleLogin()" class="w-full bg-brand-600 text-white font-bold py-3 rounded-xl hover:bg-brand-700 transition shadow-sm mt-2">دخول وحفظ الحساب</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function handleLogin() {
+            const name = document.getElementById('authName').value.trim();
+            const contact = document.getElementById('authContact').value.trim();
+            if (!name || !contact) {
+                alert('الرجاء إدخال الاسم ووسيلة الاتصال.');
+                return;
+            }
+            localStorage.setItem('atlas_logged_user', JSON.stringify({ name, contact }));
+            updateHeaderUser();
+            router('home');
+        }
+
+        // 2. الصفحة الرئيسية
+        function renderHome(container) {
+            container.innerHTML = `
+                <div class="mb-6 flex justify-between items-center bg-brand-50 p-4 rounded-2xl border border-brand-100">
+                    <div>
+                        <h2 class="text-lg font-black text-gray-900">أهلاً بك في منصة المركز</h2>
+                        <p class="text-xs text-gray-600">اختر الخدمة المطلوبة أو تصفح محلات الخامات وأسعارها.</p>
+                    </div>
+                    <button onclick="router('shops')" class="bg-white text-brand-700 border border-brand-300 text-xs px-4 py-2.5 rounded-xl font-bold hover:bg-brand-100 transition shadow-sm">🛒 محلات الخامات والأسعار</button>
+                </div>
+
+                <!-- مربع التحليل الذكي للمشكلة -->
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                    <div class="flex gap-2">
+                        <input type="text" id="problemInput" placeholder="اكتب مشكلتك (مثال: تسريب مياه، مكيف مش بيبرد...)" class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500">
+                        <button onclick="analyzeProblem()" class="bg-brand-600 text-white px-5 rounded-xl font-bold text-sm hover:bg-brand-700 transition shrink-0">تحليل الذكاء</button>
+                    </div>
+                    <div id="aiSuggestion" class="mt-2 text-xs text-brand-700 font-semibold hidden"></div>
+                </div>
+
+                <!-- شبكة الخدمات -->
+                <div class="grid grid-cols-3 sm:grid-cols-5 gap-2.5 mb-6">
+                    ${servicesList.map(s => `
+                        <div onclick="filterByService('${s.id}')" class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 hover:border-brand-500 cursor-pointer text-center transition">
+                            <span class="text-2xl block mb-1">${s.icon}</span>
+                            <span class="text-xs font-bold text-gray-800">${s.name}</span>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <!-- خريطة الفنيين -->
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="font-bold text-sm text-gray-800">📍 الخريطة الحية للفنيين في المركز</h3>
+                        <button onclick="router('techRegister')" class="text-xs bg-brand-600 text-white px-3 py-1.5 rounded-lg font-bold">تسجيل كفني جديد</button>
+                    </div>
+                    <div id="map"></div>
+                </div>
+
+                <!-- قائمة الفنيين -->
+                <div id="techsListContainer" class="space-y-3"></div>
+            `;
+            loadTechsList();
+            initGoogleMap();
+        }
+
+        // 3. صفحة محلات الخامات والأسعار
+        function renderShops(container) {
+            const shops = JSON.parse(localStorage.getItem('atlas_db_shops') || '[]');
+            container.innerHTML = `
+                <div class="mb-4 flex items-center justify-between">
+                    <button onclick="router('home')" class="text-xs bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg font-semibold">&larr; العودة للرئيسية</button>
+                    <h2 class="text-lg font-bold text-gray-800">🛒 محلات ومستلزمات المركز</h2>
+                </div>
+
+                <div class="space-y-4">
+                    ${shops.map(sh => `
+                        <div class="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <h3 class="font-bold text-gray-900 text-base">${sh.name}</h3>
+                                    <p class="text-xs text-gray-500">${sh.address}</p>
+                                </div>
+                                <span class="bg-amber-50 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">🔥 ${sh.offers}</span>
+                            </div>
+                            <div class="my-3 border-t border-gray-100 pt-2">
+                                <p class="text-xs font-bold text-gray-700 mb-2">أهم أسعار القطع المتوفرة:</p>
+                                <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    ${sh.items.map(it => `
+                                        <div class="bg-gray-50 p-2 rounded-xl text-xs flex justify-between border border-gray-100">
+                                            <span class="font-medium text-gray-800">${it.name}</span>
+                                            <span class="font-bold text-brand-600">${it.price}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                            <div class="flex gap-2 mt-4">
+                                <a href="tel:${sh.phone}" class="flex-1 bg-brand-600 text-white text-xs py-2.5 rounded-xl font-bold text-center hover:bg-brand-700 transition">اتصال بالمحل</a>
+                                <a href="https://wa.me/${sh.phone}" target="_blank" class="flex-1 bg-emerald-50 text-emerald-700 text-xs py-2.5 rounded-xl font-bold text-center hover:bg-emerald-100 transition">واتساب</a>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        // تحليل المشكلة بالذكاء الاصطناعي المحلي
+        function analyzeProblem() {
+            const text = document.getElementById('problemInput').value.toLowerCase();
+            const suggestionBox = document.getElementById('aiSuggestion');
+            let matchedService = 'عام', serviceKey = '';
+
+            if (text.includes('مياه') || text.includes('حنفية') || text.includes('تسريب') || text.includes('مواسير')) {
+                matchedService = 'سباكة'; serviceKey = 'plumbing';
+            } else if (text.includes('كهرباء') || text.includes('نور') || text.includes('سلك')) {
+                matchedService = 'كهرباء'; serviceKey = 'electricity';
+            } else if (text.includes('مكيف') || text.includes('تكييف') || text.includes('فريون')) {
+                matchedService = 'تكييف'; serviceKey = 'ac';
+            } else {
+                suggestionBox.classList.remove('hidden');
+                suggestionBox.innerText = '💡 تم استعراض كافة الفنيين المتاحين.';
+                loadTechsList();
+                return;
+            }
+
+            suggestionBox.classList.remove('hidden');
+            suggestionBox.innerHTML = `✨ التخصص المقترح لحل مشكلتك: <strong class="underline">${matchedService}</strong>`;
+            filterByService(serviceKey);
+        }
+
+        function loadTechsList(filterService = null) {
+            const container = document.getElementById('techsListContainer');
+            const techs = JSON.parse(localStorage.getItem('atlas_db_techs') || '[]');
+            const filtered = filterService ? techs.filter(t => t.service === filterService) : techs;
+
+            if (filtered.length === 0) {
+                container.innerHTML = `<div class="bg-white p-6 rounded-2xl text-center text-xs text-gray-500">لا يوجد فنيون مسجلون في هذا التخصص حالياً.</div>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(t => `
+                <div class="bg-white p-4 rounded-2xl shadow-sm border border-gray-100 flex items-center justify-between">
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h4 class="font-bold text-gray-900">${t.name}</h4>
+                            ${t.verified ? '<span class="text-xs text-brand-600 font-bold">🟢 موثق</span>' : ''}
+                        </div>
+                        <p class="text-xs text-brand-600 font-semibold mt-0.5">${t.specialty}</p>
+                        <p class="text-xs text-gray-500 mt-1">★ التقييم: ${t.rating} / 5</p>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <a href="tel:${t.phone}" class="bg-brand-600 text-white text-xs px-4 py-2 rounded-xl font-bold text-center">اتصال</a>
+                        <a href="https://wa.me/${t.phone}" target="_blank" class="bg-emerald-50 text-emerald-700 text-xs px-4 py-2 rounded-xl font-bold text-center">واتساب</a>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function filterByService(serviceId) { loadTechsList(serviceId); }
+
+        function initGoogleMap() {
+            if (typeof google === 'undefined') return;
+            const map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 13,
+                center: { lat: 30.0444, lng: 31.2357 }
+            });
+            const techs = JSON.parse(localStorage.getItem('atlas_db_techs') || '[]');
+            techs.forEach(t => {
+                new google.maps.Marker({
+                    position: { lat: t.lat || 30.0444, lng: t.lng || 31.2357 },
+                    map: map,
+                    title: t.name + ' - ' + t.specialty
+                });
+            });
+        }
+
+        // 4. استمارة تسجيل فني
+        function renderTechRegister(container) {
+            container.innerHTML = `
+                <div class="max-w-md mx-auto bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h2 class="text-xl font-black text-gray-900 mb-1">استمارة انضمام فني</h2>
+                    <p class="text-xs text-gray-500 mb-6">سجل بياناتك لتظهر على الخريطة والمنصة للعملاء.</p>
+                    
+                    <form onsubmit="handleTechSubmit(event)" class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">الاسم الثلاثي أو الشهرة</label>
+                            <input type="text" id="techName" required class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">التخصص</label>
+                            <select id="techService" class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                                ${servicesList.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">وصف دقيق لما تقوم به</label>
+                            <input type="text" id="techSpecialty" required class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-gray-700 mb-1">رقم الهاتف (للتواصل والواتساب)</label>
+                            <input type="tel" id="techPhone" required placeholder="010xxxxxxxx" class="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5">
+                        </div>
+                        <button type="submit" class="w-full bg-brand-600 text-white font-bold py-3 rounded-xl hover:bg-brand-700 transition shadow-sm mt-2">تسجيل وانضمام</button>
+                    </form>
+                </div>
+            `;
+        }
+
+        function handleTechSubmit(e) {
+            e.preventDefault();
+            const newTech = {
+                id: Date.now(),
+                name: document.getElementById('techName').value,
+                service: document.getElementById('techService').value,
+                specialty: document.getElementById('techSpecialty').value,
+                phone: document.getElementById('techPhone').value,
+                lat: 30.0450 + (Math.random() - 0.5) * 0.05,
+                lng: 31.2350 + (Math.random() - 0.5) * 0.05,
+                rating: 5.0,
+                verified: true
+            };
+            const techs = JSON.parse(localStorage.getItem('atlas_db_techs') || '[]');
+            techs.push(newTech);
+            localStorage.setItem('atlas_db_techs', JSON.stringify(techs));
+            alert('تم تسجيلك بنجاح على منصة ATLAS!');
+            router('home');
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkAuthAndInit();
+        });
+    </script>
+</body>
+</html>
